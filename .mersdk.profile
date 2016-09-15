@@ -76,6 +76,92 @@ function build_hybrishal {
   ubu-chroot -r $MER_ROOT/sdks/ubuntu /bin/bash -c "echo Building hybris-hal && cd $ANDROID_ROOT && source build/envsetup.sh && breakfast $DEVICE && make -j8 hybris-hal"
 }
 
+function create_device_repositories {
+  cd $ANDROID_ROOT
+  mkdir rpm
+  cd rpm
+  git init
+  git submodule add https://github.com/mer-hybris/droid-hal-device dhd
+
+  cat << EOF > droid-hal-$DEVICE.spec
+# These and other macros are documented in dhd/droid-hal-device.inc
+%define device $DEVICE
+%define vendor $VENDOR
+%define vendor_pretty LG
+%define device_pretty Nexus 5
+%define installable_zip 1
+%include rpm/dhd/droid-hal-device.inc
+EOF
+
+  git add .
+  git commit -m "[dhd] Initial content"
+
+  cd $ANDROID_ROOT
+  mkdir hybris/droid-configs
+  cd hybris/droid-configs
+  git init
+  git submodule add https://github.com/mer-hybris/droid-hal-configs droid-configs-device
+  mkdir rpm
+
+  cat <<EOF >rpm/droid-config-$DEVICE.spec
+# These and other macros are documented in
+# ../droid-configs-device/droid-configs.inc
+%define device $DEVICE
+%define vendor $VENDOR
+%define vendor_pretty LG
+%define device_pretty Nexus 5
+%define dcd_path ./
+# Adjust this for your device
+%define pixel_ratio 2.0
+# We assume most devices will
+%define have_modem 1
+%include droid-configs-device/droid-configs.inc
+EOF
+
+  git add .
+  git commit -m "[dcd] Initial content"
+
+  cd $ANDROID_ROOT
+  rpm/dhd/helpers/add_new_device.sh
+
+  cd hybris/droid-configs
+  COMPOSITOR_CFGS=sparse/var/lib/environment/compositor
+  mkdir -p $COMPOSITOR_CFGS
+  cat <<EOF >$COMPOSITOR_CFGS/droid-hal-device.conf
+# Config for $VENDOR/$DEVICE
+EGL_PLATFORM=hwcomposer
+QT_QPA_PLATFORM=hwcomposer
+# Determine which node is your touchscreen by checking /dev/input/event*
+LIPSTICK_OPTIONS=-plugin evdevtouch:/dev/input/event0 \
+-plugin evdevkeyboard:keymap=/usr/share/qt5/keymaps/droid.qmap
+EOF
+  
+  git add .
+  git commit -m "[dcd] Patterns and compositor config"
+
+  cd $ANDROID_ROOT
+  mkdir hybris/droid-hal-version-$DEVICE
+  cd hybris/droid-hal-version-$DEVICE
+  git init
+  git submodule add https://github.com/mer-hybris/droid-hal-version
+  mkdir rpm
+  cat <<EOF >rpm/droid-hal-version-$DEVICE.spec
+# rpm_device is the name of the ported device
+%define rpm_device $DEVICE
+# rpm_vendor is used in the rpm space
+%define rpm_vendor $VENDOR
+# Manufacturer and device name to be shown in UI
+%define vendor_pretty $VENDOR_PRETTY
+%define device_pretty $DEVICE_PRETTY
+# See ../droid-hal-version/droid-hal-device.inc for similar macros:
+%define have_vibrator 1
+%define have_led 1
+%include droid-hal-version/droid-hal-version.inc
+EOF
+  git add .
+  git commit -m "[dvd] Initial content"
+}
+
 function build_packages {
   cd $ANDROID_ROOT
   rpm/dhd/helpers/build_packages.sh
@@ -203,13 +289,14 @@ function mer_man {
   echo "  4) setup_scratchbox: sets up a cross compilation toolchain to build mer packages"
   echo "  5) test_scratchbox: tests the scratchbox toolchain."
   echo "  6) build_hybrishal: builds the hybris-hal needed to boot sailfishos for $DEVICE"
-  echo "  7) build_packages: builds packages needed to build the sailfishos rootfs of $DEVICE"
-  echo "  8) build_audioflingerglue: builds audioflingerglue packages for audio calls"
-  echo "  9) build_gstdroid: builds gstdroid for audio/video/camera support"
-  echo "  9) upload_packages: uploads droid-hal*, audioflingerglue, gstdroid* packages to OBS"
-  echo "  10) generate_kickstart: generates a kickstart file needed to build rootfs"
-  echo "  11) build_rootfs [releasename]: builds a sailfishos installer zip for $DEVICE"
-  echo "  12) mer_man: Show this help"
+  echo "  7) create_device_repositories: creates repositories for $DEVICE (for a new port)"
+  echo "  8) build_packages: builds packages needed to build the sailfishos rootfs of $DEVICE"
+  echo "  9) build_audioflingerglue: builds audioflingerglue packages for audio calls"
+  echo "  10) build_gstdroid: builds gstdroid for audio/video/camera support"
+  echo "  11) upload_packages: uploads droid-hal*, audioflingerglue, gstdroid* packages to OBS"
+  echo "  12) generate_kickstart: generates a kickstart file needed to build rootfs"
+  echo "  13) build_rootfs [releasename]: builds a sailfishos installer zip for $DEVICE"
+  echo "  14) mer_man: Show this help"
 }
 
 mer_man
